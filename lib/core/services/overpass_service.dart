@@ -1,5 +1,5 @@
 // =============================================================================
-// OVERPASS SERVICE - Interrogation directe de l'API Overpass OSM
+// OVERPASS SERVICE - Avec support des routes de transport
 // =============================================================================
 
 import 'dart:async';
@@ -7,7 +7,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
-/// Types de transport disponibles en Côte d'Ivoire
 enum TransportType {
   bus,
   gbaka,
@@ -17,7 +16,41 @@ enum TransportType {
   all,
 }
 
-/// Représente un arrêt de transport OSM
+/// Représente une route de transport OSM
+class TransportRoute {
+  final String id;
+  final String name;
+  final String type;
+  final String operator;
+  final List<LatLng> geometry;
+  final List<TransportStop> stops;
+  final Map<String, dynamic> tags;
+
+  TransportRoute({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.operator,
+    required this.geometry,
+    required this.stops,
+    required this.tags,
+  });
+
+  factory TransportRoute.fromJson(Map<String, dynamic> json) {
+    final tags = json['tags'] as Map<String, dynamic>? ?? {};
+    
+    return TransportRoute(
+      id: 'route-${json['id']}',
+      name: tags['name'] ?? tags['ref'] ?? 'Ligne sans nom',
+      type: tags['route'] ?? 'bus',
+      operator: tags['operator'] ?? 'Inconnu',
+      geometry: [],
+      stops: [],
+      tags: tags,
+    );
+  }
+}
+
 class TransportStop {
   final String id;
   final String osmId;
@@ -51,8 +84,8 @@ class TransportStop {
       osmId: json['id'].toString(),
       name: tags['name'] ?? 'Arrêt sans nom',
       position: LatLng(
-        json['lat'] ?? 0.0,
-        json['lon'] ?? 0.0,
+        (json['lat'] as num?)?.toDouble() ?? 0.0,
+        (json['lon'] as num?)?.toDouble() ?? 0.0,
       ),
       type: _determineStopType(tags),
       tags: tags,
@@ -86,27 +119,18 @@ class TransportStop {
     final types = <TransportType>[];
     final name = tags['name']?.toString().toLowerCase() ?? '';
 
-    // Bus
     if (tags['highway'] == 'bus_stop' || tags['public_transport'] != null) {
       types.add(TransportType.bus);
     }
-
-    // Gbaka
     if (tags['gbaka'] == 'yes' || tags['minibus'] == 'yes' || name.contains('gbaka')) {
       types.add(TransportType.gbaka);
     }
-
-    // Woro-woro
     if (tags['woro_woro'] == 'yes' || tags['woro-woro'] == 'yes' || name.contains('woro')) {
       types.add(TransportType.woroworo);
     }
-
-    // Taxi
     if (tags['amenity'] == 'taxi' || tags['taxi'] == 'yes' || name.contains('taxi')) {
       types.add(TransportType.taxi);
     }
-
-    // Moto-taxi
     if (tags['motorcycle_taxi'] == 'yes' || tags['moto_taxi'] == 'yes' || name.contains('moto')) {
       types.add(TransportType.mototaxi);
     }
@@ -129,18 +153,18 @@ class TransportStop {
   };
 }
 
-/// Service pour interroger l'API Overpass
 class OverpassService {
   static const String _baseUrl = 'https://overpass-api.de/api/interpreter';
   static const Duration _timeout = Duration(seconds: 60);
 
   final http.Client _client = http.Client();
   final _stopCache = <String, List<TransportStop>>{};
+  final _routeCache = <String, List<TransportRoute>>{};
   final _cacheExpiry = <String, DateTime>{};
   static const _cacheDuration = Duration(hours: 6);
 
-  /// Récupère les arrêts de transport dans une zone
-  Future<List<TransportStop>> getStopsInArea({
+  /// Récupère les arrêts ET les routes de transport
+  Future<Map<String, dynamic>> getTransportData({
     required LatLng center,
     required double radiusMeters,
     TransportType type = TransportType.all,
@@ -148,12 +172,14 @@ class OverpassService {
   }) async {
     final cacheKey = '${center.latitude},${center.longitude},$radiusMeters,$type';
 
-    // Vérifier le cache
     if (!forceRefresh && _isCacheValid(cacheKey)) {
-      return _stopCache[cacheKey]!;
+      return {
+        'stops': _stopCache[cacheKey] ?? [],
+        'routes': _routeCache[cacheKey] ?? [],
+      };
     }
 
-    final query = _buildOverpassQuery(
+    final query = _buildOverpassQueryWithRoutes(
       lat: center.latitude,
       lon: center.longitude,
       radius: radiusMeters,
@@ -172,107 +198,169 @@ class OverpassService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final stops = _parseOverpassResponse(data);
+        final result = _parseOverpassResponseWithRoutes(data);
 
-        // Mettre en cache
-        _stopCache[cacheKey] = stops;
+        _stopCache[cacheKey] = result['stops'] as List<TransportStop>;
+        _routeCache[cacheKey] = result['routes'] as List<TransportRoute>;
         _cacheExpiry[cacheKey] = DateTime.now().add(_cacheDuration);
 
-        return stops;
+        return result;
       } else {
         throw Exception('Erreur Overpass: ${response.statusCode}');
       }
     } catch (e) {
-      // Fallback: retourner le cache même expiré
       if (_stopCache.containsKey(cacheKey)) {
-        return _stopCache[cacheKey]!;
+        return {
+          'stops': _stopCache[cacheKey] ?? [],
+          'routes': _routeCache[cacheKey] ?? [],
+        };
       }
       rethrow;
     }
   }
 
-  /// Construit la requête Overpass optimisée
-  String _buildOverpassQuery({
+  /// Requête Overpass incluant les routes de transport
+  String _buildOverpassQueryWithRoutes({
     required double lat,
     required double lon,
     required double radius,
     required TransportType type,
   }) {
-    final baseQuery = '''
+    return '''
 [out:json][timeout:60][maxsize:1073741824];
+// Définir la zone de recherche
 (
-  // === ARRÊTS DE BUS OFFICIELS ===
-  node(around:$radius, $lat, $lon)["highway"="bus_stop"];
-  node(around:$radius, $lat, $lon)["public_transport"="platform"];
-  node(around:$radius, $lat, $lon)["public_transport"="station"];
-  node(around:$radius, $lat, $lon)["public_transport"="stop_position"];
+  node(around:$radius,$lat,$lon);
+  way(around:$radius,$lat,$lon);
+  relation(around:$radius,$lat,$lon);
+)->.searchArea;
+
+// === RELATIONS DE ROUTES DE BUS ===
+(
+  relation(area.searchArea)
+    ["type"="route"]
+    ["route"="bus"];
+  relation(area.searchArea)
+    ["type"="route"]
+    ["route"="minibus"];
+  relation(area.searchArea)
+    ["type"="route"]
+    ["route"="share_taxi"];
+)->.busRoutes;
+
+// Extraire les arrêts et segments
+(
+  // Arrêts de bus référencés
+  node(r.busRoutes)["highway"="bus_stop"];
+  node(r.busRoutes)["public_transport"="platform"];
+  node(r.busRoutes)["public_transport"="stop_position"];
   
-  // === ARRÊTS DE TAXI ===
-  node(around:$radius, $lat, $lon)["amenity"="taxi"];
-  node(around:$radius, $lat, $lon)["taxi"="yes"];
+  // Segments de trajet
+  way(r.busRoutes);
   
-  // === GBAKA ET WORO-WORO ===
-  node(around:$radius, $lat, $lon)["minibus"="yes"];
-  node(around:$radius, $lat, $lon)["gbaka"="yes"];
-  node(around:$radius, $lat, $lon)["woro_woro"="yes"];
-  node(around:$radius, $lat, $lon)["woro-woro"="yes"];
+  // Les relations elles-mêmes
+  .busRoutes;
   
-  // === MOTO-TAXI ===
-  node(around:$radius, $lat, $lon)["motorcycle_taxi"="yes"];
-  node(around:$radius, $lat, $lon)["moto_taxi"="yes"];
-  
-  // === RECHERCHE PAR NOM ===
-  node(around:$radius, $lat, $lon)["name"~"[Gg]baka"];
-  node(around:$radius, $lat, $lon)["name"~"[Ww]oro"];
-  node(around:$radius, $lat, $lon)["name"~"[Aa]rrêt"];
-  node(around:$radius, $lat, $lon)["name"~"[Gg]are"];
-  node(around:$radius, $lat, $lon)["name"~"[Tt]axi"];
-  node(around:$radius, $lat, $lon)["name"~"[Mm]oto"];
-  
-  // === LIEUX D'EMBARQUEMENT ===
-  node(around:$radius, $lat, $lon)["public_transport"];
-  node(around:$radius, $lat, $lon)["amenity"="marketplace"];
-  
-  // Gares routières
-  way(around:$radius, $lat, $lon)["public_transport"="station"];
-  way(around:$radius, $lat, $lon)["amenity"="bus_station"];
+  // === ARRÊTS SUPPLÉMENTAIRES ===
+  node(around:$radius,$lat,$lon)["highway"="bus_stop"];
+  node(around:$radius,$lat,$lon)["public_transport"="platform"];
+  node(around:$radius,$lat,$lon)["public_transport"="station"];
+  node(around:$radius,$lat,$lon)["amenity"="taxi"];
+  node(around:$radius,$lat,$lon)["minibus"="yes"];
+  node(around:$radius,$lat,$lon)["gbaka"="yes"];
+  node(around:$radius,$lat,$lon)["woro_woro"="yes"];
+  node(around:$radius,$lat,$lon)["motorcycle_taxi"="yes"];
 );
-out body meta;
+
+out meta;
 >;
 out skel qt;
 ''';
-
-    return baseQuery;
   }
 
-  /// Parse la réponse Overpass
-  List<TransportStop> _parseOverpassResponse(Map<String, dynamic> data) {
+  /// Parse la réponse incluant routes et arrêts
+  Map<String, dynamic> _parseOverpassResponseWithRoutes(Map<String, dynamic> data) {
     final elements = data['elements'] as List? ?? [];
     final stops = <TransportStop>[];
-    final seenIds = <String>{};
-
+    final routes = <TransportRoute>[];
+    final ways = <String, List<LatLng>>{};
+    final routeMembers = <String, List<String>>{};
+    
+    // Premier passage: collecter ways et relations
     for (final element in elements) {
-      if (element['type'] != 'node') continue;
-      if (element['lat'] == null || element['lon'] == null) continue;
-
-      final id = element['id'].toString();
-      if (seenIds.contains(id)) continue;
-
-      seenIds.add(id);
-
-      try {
-        stops.add(TransportStop.fromJson(element));
-      } catch (e) {
-        // Ignorer les éléments invalides
-        continue;
+      if (element['type'] == 'way' && element['nodes'] != null) {
+        ways[element['id'].toString()] = [];
+      } else if (element['type'] == 'relation') {
+        final tags = element['tags'] as Map<String, dynamic>? ?? {};
+        if (tags['type'] == 'route') {
+          final route = TransportRoute.fromJson(element);
+          routes.add(route);
+          
+          // Stocker les membres
+          final members = element['members'] as List? ?? [];
+          routeMembers[route.id] = members
+              .where((m) => m['type'] == 'way')
+              .map((m) => m['ref'].toString())
+              .toList();
+        }
+      } else if (element['type'] == 'node' && element['lat'] != null) {
+        final tags = element['tags'] as Map<String, dynamic>? ?? {};
+        if (tags['highway'] == 'bus_stop' || 
+            tags['public_transport'] != null ||
+            tags['amenity'] == 'taxi') {
+          try {
+            stops.add(TransportStop.fromJson(element));
+          } catch (e) {
+            continue;
+          }
+        }
       }
     }
+    
+    // Second passage: construire géométries des ways
+    for (final element in elements) {
+      if (element['type'] == 'node' && element['lat'] != null) {
+        final nodeId = element['id'].toString();
+        final lat = (element['lat'] as num).toDouble();
+        final lon = (element['lon'] as num).toDouble();
+        
+        // Ajouter aux ways qui le référencent
+        for (final wayEntry in ways.entries) {
+          ways[wayEntry.key]!.add(LatLng(lat, lon));
+        }
+      }
+    }
+    
+    // Associer géométries aux routes
+    for (final route in routes) {
+      final memberIds = routeMembers[route.id] ?? [];
+      final geometry = <LatLng>[];
+      
+      for (final wayId in memberIds) {
+        if (ways.containsKey(wayId)) {
+          geometry.addAll(ways[wayId]!);
+        }
+      }
+      
+      // Mise à jour avec la géométrie
+      routes[routes.indexOf(route)] = TransportRoute(
+        id: route.id,
+        name: route.name,
+        type: route.type,
+        operator: route.operator,
+        geometry: geometry,
+        stops: route.stops,
+        tags: route.tags,
+      );
+    }
 
-    // Supprimer les doublons par proximité (< 50m)
-    return _removeDuplicatesByProximity(stops);
+    return {
+      'stops': _removeDuplicatesByProximity(stops),
+      'routes': routes,
+    };
   }
 
-  /// Supprime les doublons basés sur la proximité
+  /// Supprime les doublons par proximité
   List<TransportStop> _removeDuplicatesByProximity(List<TransportStop> stops) {
     if (stops.isEmpty) return stops;
 
@@ -303,21 +391,17 @@ out skel qt;
     return filtered;
   }
 
-  /// Vérifie si le cache est valide
   bool _isCacheValid(String key) {
-    if (!_stopCache.containsKey(key)) return false;
     if (!_cacheExpiry.containsKey(key)) return false;
-
     return DateTime.now().isBefore(_cacheExpiry[key]!);
   }
 
-  /// Nettoie le cache
   void clearCache() {
     _stopCache.clear();
+    _routeCache.clear();
     _cacheExpiry.clear();
   }
 
-  /// Libère les ressources
   void dispose() {
     _client.close();
     clearCache();

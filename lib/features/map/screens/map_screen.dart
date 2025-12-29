@@ -1,5 +1,5 @@
 // =============================================================================
-// MAP SCREEN - Écran principal avec carte interactive OSM
+// MAP SCREEN - Avec affichage des routes de transport (CORRIGÉ)
 // =============================================================================
 
 import 'package:flutter/material.dart';
@@ -18,7 +18,6 @@ import '../../widgets/weather_widget.dart';
 import '../../widgets/transport_filter_chips.dart';
 import '../../widgets/map_controls.dart';
 
-
 class MainMapScreen extends StatefulWidget {
   const MainMapScreen({super.key});
 
@@ -34,7 +33,6 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
   void initState() {
     super.initState();
 
-    // Animation des FABs
     _fabAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -47,7 +45,6 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
 
     _fabAnimationController.forward();
 
-    // Initialiser la carte
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeMap();
     });
@@ -72,16 +69,9 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
     return Scaffold(
       body: Stack(
         children: [
-          // Carte OSM
           _buildMap(),
-
-          // Header avec météo et filtres
           _buildHeader(),
-
-          // Contrôles de la carte (zoom, etc.)
           _buildMapControls(),
-
-          // Indicateur de chargement
           _buildLoadingIndicator(),
         ],
       ),
@@ -91,7 +81,6 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
     );
   }
 
-  /// Construit la carte OpenStreetMap
   Widget _buildMap() {
     return Consumer<MapProvider>(
       builder: (context, mapProvider, child) {
@@ -110,7 +99,6 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
                   }
                 },
                 onTap: (tapPosition, point) {
-                  // Fermer les bottom sheets ouvertes
                   Navigator.of(context).popUntil((route) => route.isFirst);
                 },
               ),
@@ -122,6 +110,24 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
                   maxZoom: 19,
                   tileProvider: NetworkTileProvider(),
                 ),
+
+                // Lignes de transport (routes)
+                if (transportProvider.showRoutes)
+                  ...transportProvider.filteredRoutes.map((route) {
+                    if (route.geometry.isEmpty) return const SizedBox();
+                    
+                    return PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: route.geometry,
+                          strokeWidth: 4,
+                          color: _getRouteColor(route.type),
+                          borderStrokeWidth: 1,
+                          borderColor: Colors.white,
+                        ),
+                      ],
+                    );
+                  }),
 
                 // Marqueurs des arrêts
                 MarkerLayer(
@@ -165,11 +171,10 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
     );
   }
 
-  /// Construit les marqueurs des arrêts
   List<Marker> _buildStopMarkers(
-      List<TransportStop> stops,
-      TransportProvider transportProvider,
-      ) {
+    List<TransportStop> stops,
+    TransportProvider transportProvider,
+  ) {
     return stops.map((stop) {
       return Marker(
         point: stop.position,
@@ -186,12 +191,11 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
     }).toList();
   }
 
-  /// Affiche les détails d'un arrêt
   void _showStopDetails(
-      BuildContext context,
-      TransportStop stop,
-      TransportProvider transportProvider,
-      ) {
+    BuildContext context,
+    TransportStop stop,
+    TransportProvider transportProvider,
+  ) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -206,7 +210,6 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
     );
   }
 
-  /// Header avec météo et filtres
   Widget _buildHeader() {
     return Positioned(
       top: 0,
@@ -226,7 +229,6 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
         child: SafeArea(
           child: Column(
             children: [
-              // Barre de titre avec météo
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
@@ -244,36 +246,89 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
                   ],
                 ),
               ),
-
-              // Filtres de transport
               const TransportFilterChips(),
-
-              // Compteur d'arrêts
+              
+              // Compteur et toggle routes
               Consumer<TransportProvider>(
                 builder: (context, provider, child) {
-                  if (provider.filteredStops.isEmpty) return const SizedBox();
-
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (provider.filteredStops.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            '${provider.filteredStops.length} arrêt(s)',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
-                      ],
-                    ),
-                    child: Text(
-                      '${provider.filteredStops.length} arrêt(s) trouvé(s)',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                      
+                      // Toggle routes
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => provider.toggleShowRoutes(),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    provider.showRoutes 
+                                        ? Icons.route 
+                                        : Icons.hide_source,
+                                    size: 16,
+                                    color: provider.showRoutes 
+                                        ? AppColors.primary 
+                                        : Colors.grey,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    provider.showRoutes ? 'Routes ON' : 'Routes OFF',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: provider.showRoutes 
+                                          ? AppColors.primary 
+                                          : Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   );
                 },
               ),
@@ -284,7 +339,6 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
     );
   }
 
-  /// Contrôles de la carte
   Widget _buildMapControls() {
     return Positioned(
       right: 16,
@@ -299,7 +353,6 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
     );
   }
 
-  /// Indicateur de chargement
   Widget _buildLoadingIndicator() {
     return Consumer<TransportProvider>(
       builder: (context, provider, child) {
@@ -331,7 +384,7 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                   SizedBox(width: 12),
-                  Text('Chargement des arrêts...'),
+                  Text('Chargement...'),
                 ],
               ),
             ),
@@ -341,14 +394,12 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
     );
   }
 
-  /// Boutons d'action flottants
   Widget _buildFloatingActions() {
     return Consumer<MapProvider>(
       builder: (context, mapProvider, child) {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Bouton localisation
             ScaleTransition(
               scale: _fabAnimation,
               child: FloatingActionButton(
@@ -369,10 +420,7 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
                 ),
               ),
             ),
-
             const SizedBox(height: 12),
-
-            // Bouton suivi de position
             ScaleTransition(
               scale: _fabAnimation,
               child: FloatingActionButton.small(
@@ -396,55 +444,45 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
     );
   }
 
-  /// Barre de navigation inférieure
   Widget _buildBottomBar(BuildContext context) {
-    return Consumer<TransportProvider>(
-      builder: (context, provider, child) {
-        return BottomNavigationBar(
-          currentIndex: 0,
-          onTap: (index) {
-            switch (index) {
-              case 0:
-                // Already on map screen
-                break;
-              case 1:
-                // Navigate to route search
-                Navigator.pushNamed(context, '/route_search');
-                break;
-              case 2:
-                // Navigate to favorites
-                Navigator.pushNamed(context, '/favorites');
-                break;
-              case 3:
-                // Navigate to settings
-                Navigator.pushNamed(context, '/settings');
-                break;
-            }
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.map),
-              label: 'Carte',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.directions),
-              label: 'Itinéraire',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.favorite),
-              label: 'Favoris',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.settings),
-              label: 'Paramètres',
-            ),
-          ],
-          selectedItemColor: AppColors.primary,
-          unselectedItemColor: Colors.grey,
-          backgroundColor: Colors.white,
-          elevation: 8,
-        );
+    return BottomNavigationBar(
+      currentIndex: 0,
+      onTap: (index) {
+        switch (index) {
+          case 1:
+            Navigator.pushNamed(context, '/route_search');
+            break;
+          case 2:
+            Navigator.pushNamed(context, '/favorites');
+            break;
+          case 3:
+            Navigator.pushNamed(context, '/settings');
+            break;
+        }
       },
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Carte'),
+        BottomNavigationBarItem(icon: Icon(Icons.directions), label: 'Itinéraire'),
+        BottomNavigationBarItem(icon: Icon(Icons.favorite), label: 'Favoris'),
+        BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Paramètres'),
+      ],
+      selectedItemColor: AppColors.primary,
+      unselectedItemColor: Colors.grey,
+      backgroundColor: Colors.white,
+      elevation: 8,
     );
+  }
+
+  Color _getRouteColor(String type) {
+    switch (type) {
+      case 'bus':
+        return AppColors.busColor;
+      case 'minibus':
+        return AppColors.gbakaColor;
+      case 'share_taxi':
+        return AppColors.taxiColor;
+      default:
+        return AppColors.primary;
+    }
   }
 }

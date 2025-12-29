@@ -1,19 +1,12 @@
-
 // =============================================================================
-// PROVIDERS - Gestion d'état avec Provider
+// TRANSPORT PROVIDER - Avec support des routes (CORRIGÉ)
 // =============================================================================
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/services/overpass_service.dart';
-import '../../core/services/location_service.dart';
 import '../../core/services/cache_service.dart';
-
-// =============================================================================
-// TRANSPORT PROVIDER - Gestion des données de transport
-// =============================================================================
 
 class TransportProvider with ChangeNotifier {
   final OverpassService overpassService;
@@ -25,41 +18,49 @@ class TransportProvider with ChangeNotifier {
   });
 
   List<TransportStop> _stops = [];
+  List<TransportRoute> _routes = [];
   bool _isLoading = false;
   String? _error;
   TransportType _selectedType = TransportType.all;
   double _searchRadius = 2000;
+  bool _showRoutes = true;
 
   List<TransportStop> get stops => _stops;
+  List<TransportRoute> get routes => _routes;
   bool get isLoading => _isLoading;
   String? get error => _error;
   TransportType get selectedType => _selectedType;
   double get searchRadius => _searchRadius;
+  bool get showRoutes => _showRoutes;
 
-  /// Charge les arrêts autour d'une position
+  /// Charge les arrêts et routes autour d'une position
   Future<void> loadStops(LatLng position, {bool forceRefresh = false}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      _stops = await overpassService.getStopsInArea(
+      final data = await overpassService.getTransportData(
         center: position,
         radiusMeters: _searchRadius,
         type: _selectedType,
         forceRefresh: forceRefresh,
       );
+
+      _stops = data['stops'] as List<TransportStop>;
+      _routes = data['routes'] as List<TransportRoute>;
       _error = null;
     } catch (e) {
-      _error = 'Erreur lors du chargement des arrêts: $e';
+      _error = 'Erreur lors du chargement: $e';
       _stops = [];
+      _routes = [];
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  /// Filtre les arrêts par type
+  /// Filtre par type de transport
   void setTransportType(TransportType type) {
     _selectedType = type;
     notifyListeners();
@@ -71,14 +72,43 @@ class TransportProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Filtre les arrêts affichés selon le type sélectionné
+  /// Toggle affichage des routes
+  void toggleShowRoutes() {
+    _showRoutes = !_showRoutes;
+    notifyListeners();
+  }
+
+  /// Filtre les arrêts affichés
   List<TransportStop> get filteredStops {
     if (_selectedType == TransportType.all) {
       return _stops;
     }
-
     return _stops.where((stop) {
       return stop.availableTransports.contains(_selectedType);
+    }).toList();
+  }
+
+  /// Filtre les routes affichées
+  List<TransportRoute> get filteredRoutes {
+    if (!_showRoutes) return [];
+    
+    if (_selectedType == TransportType.all) {
+      return _routes;
+    }
+    
+    return _routes.where((route) {
+      switch (_selectedType) {
+        case TransportType.bus:
+          return route.type == 'bus';
+        case TransportType.gbaka:
+          return route.type == 'minibus' || route.name.toLowerCase().contains('gbaka');
+        case TransportType.woroworo:
+          return route.name.toLowerCase().contains('woro');
+        case TransportType.taxi:
+          return route.type == 'share_taxi';
+        default:
+          return true;
+      }
     }).toList();
   }
 

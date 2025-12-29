@@ -3,7 +3,7 @@
 // Fichier: lib/features/map/screens/route_search_screen.dart
 // =============================================================================
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Route;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
@@ -13,8 +13,8 @@ import '../../../core/services/route_service.dart';
 import '../../../features/providers/route_provider.dart';
 import '../../../features/providers/weather_provider.dart';
 import '../../../features/widgets/route_input.dart';
-import '../../../features/widgets/transport_suggestion.dart';
-import '../../../features/widgets/route_summary.dart';
+// import '../../../features/widgets/transport_suggestion.dart';
+// import '../../../features/widgets/route_summary.dart';
 
 class RouteSearchScreen extends StatefulWidget {
   final LatLng? initialFrom;

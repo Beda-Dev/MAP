@@ -20,8 +20,10 @@ import 'core/services/route_service.dart';
 import 'features/providers/map_provider.dart';
 import 'features/providers/transport_provider.dart';
 import 'features/providers/route_provider.dart';
+import 'features/providers/weather_provider.dart';
 import 'features/map/screens/map_screen.dart';
 import 'features/splash/splash_screen.dart';
+
 
 
 void main() async {
