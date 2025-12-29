@@ -5,6 +5,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import '../config/env_config.dart';
 
 /// Conditions météorologiques actuelles
 class WeatherConditions {
@@ -103,8 +104,6 @@ class TransportWeatherImpact {
 
 /// Service de météo avec OpenWeatherMap
 class WeatherService {
-  // ⚠️ IMPORTANT: Remplacez par votre clé API OpenWeatherMap
-  static const String _apiKey = 'VOTRE_CLE_API_OPENWEATHERMAP';
   static const String _baseUrl = 'https://api.openweathermap.org/data/2.5';
 
   final http.Client _client = http.Client();
@@ -112,38 +111,68 @@ class WeatherService {
   DateTime? _cacheTime;
   static const _cacheDuration = Duration(minutes: 10);
 
+  WeatherService() {
+    Logger.info('WeatherService initialisé', 'WeatherService');
+    Logger.debug('URL API: $_baseUrl', 'WeatherService');
+    Logger.debug('Clé API configurée: ${EnvConfig.hasValidWeatherKey ? "Oui" : "Non (mode démo)"}', 'WeatherService');
+  }
+
   /// Récupère la météo actuelle par coordonnées
   Future<WeatherConditions?> getCurrentWeather(LatLng position) async {
+    Logger.debug('Début getCurrentWeather pour position: ${position.latitude}, ${position.longitude}', 'WeatherService');
+    
     // Vérifier le cache
     if (_cachedWeather != null && _cacheTime != null) {
-      if (DateTime.now().difference(_cacheTime!) < _cacheDuration) {
+      final cacheAge = DateTime.now().difference(_cacheTime!);
+      if (cacheAge < _cacheDuration) {
+        Logger.debug('Météo récupérée depuis le cache (âge: ${cacheAge.inMinutes}min)', 'WeatherService');
         return _cachedWeather;
+      } else {
+        Logger.debug('Cache expiré (âge: ${cacheAge.inMinutes}min)', 'WeatherService');
       }
     }
 
-    if (_apiKey == 'VOTRE_CLE_API_OPENWEATHERMAP') {
-      // Mode démo sans API key
+    if (!EnvConfig.hasValidWeatherKey) {
+      Logger.warning('Mode démo - clé API non configurée', 'WeatherService');
       return _getDemoWeather();
     }
 
     try {
+      final apiKey = EnvConfig.openWeatherApiKey;
       final url = Uri.parse(
           '$_baseUrl/weather?lat=${position.latitude}&lon=${position.longitude}'
-              '&units=metric&lang=fr&appid=$_apiKey'
+              '&units=metric&lang=fr&appid=$apiKey'
       );
 
+      Logger.api('GET', url.toString());
+      
       final response = await _client.get(url).timeout(
-        const Duration(seconds: 10),
+        Duration(seconds: EnvConfig.apiTimeoutSeconds),
       );
+
+      Logger.apiResponse(url.toString(), {
+        'statusCode': response.statusCode,
+        'contentLength': response.body.length,
+      }, response.statusCode);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        Logger.debug('JSON reçu: ${data.toString()}', 'WeatherService');
+        
         _cachedWeather = WeatherConditions.fromJson(data);
         _cacheTime = DateTime.now();
+        
+        Logger.info('Météo récupérée avec succès: ${_cachedWeather!.description}', 'WeatherService');
+        Logger.cache('SET', 'weather', _cachedWeather!.toJson());
+        
         return _cachedWeather;
+      } else {
+        Logger.error('Erreur API météo: ${response.statusCode}', 'WeatherService', response.body);
       }
-    } catch (e) {
-      // En cas d'erreur, retourner données démo
+    } catch (e, stackTrace) {
+      Logger.error('Exception getCurrentWeather', 'WeatherService', e);
+      Logger.debug('Stack trace: $stackTrace', 'WeatherService');
+      Logger.info('Retour aux données démo', 'WeatherService');
       return _getDemoWeather();
     }
 
@@ -152,24 +181,45 @@ class WeatherService {
 
   /// Récupère la météo par nom de ville
   Future<WeatherConditions?> getWeatherByCity(String city) async {
-    if (_apiKey == 'VOTRE_CLE_API_OPENWEATHERMAP') {
+    Logger.debug('Début getWeatherByCity pour: $city', 'WeatherService');
+    
+    if (!EnvConfig.hasValidWeatherKey) {
+      Logger.warning('Mode démo - clé API non configurée', 'WeatherService');
       return _getDemoWeather();
     }
 
     try {
+      final apiKey = EnvConfig.openWeatherApiKey;
       final url = Uri.parse(
-          '$_baseUrl/weather?q=$city&units=metric&lang=fr&appid=$_apiKey'
+          '$_baseUrl/weather?q=$city&units=metric&lang=fr&appid=$apiKey'
       );
 
+      Logger.api('GET', url.toString());
+      
       final response = await _client.get(url).timeout(
-        const Duration(seconds: 10),
+        Duration(seconds: EnvConfig.apiTimeoutSeconds),
       );
+
+      Logger.apiResponse(url.toString(), {
+        'statusCode': response.statusCode,
+        'contentLength': response.body.length,
+      }, response.statusCode);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return WeatherConditions.fromJson(data);
+        Logger.debug('JSON reçu: ${data.toString()}', 'WeatherService');
+        
+        final weather = WeatherConditions.fromJson(data);
+        Logger.info('Météo pour $city récupérée: ${weather.description}', 'WeatherService');
+        
+        return weather;
+      } else {
+        Logger.error('Erreur API météo pour $city: ${response.statusCode}', 'WeatherService', response.body);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      Logger.error('Exception getWeatherByCity', 'WeatherService', e);
+      Logger.debug('Stack trace: $stackTrace', 'WeatherService');
+      Logger.info('Retour aux données démo', 'WeatherService');
       return _getDemoWeather();
     }
 
@@ -181,6 +231,9 @@ class WeatherService {
       WeatherConditions weather,
       double distanceMeters,
       ) {
+    Logger.debug('Analyse impact météo pour distance: ${distanceMeters}m', 'WeatherService');
+    Logger.debug('Conditions: ${weather.description}, Temp: ${weather.temp}°C', 'WeatherService');
+    
     int walkingScore = 100;
     int mototaxiScore = 100;
     int publicTransportScore = 100;
@@ -251,13 +304,18 @@ class WeatherService {
     publicTransportScore = publicTransportScore.clamp(0, 100);
     openTransportScore = openTransportScore.clamp(0, 100);
 
-    return TransportWeatherImpact(
+    final impact = TransportWeatherImpact(
       walkingScore: walkingScore,
       mototaxiScore: mototaxiScore,
       publicTransportScore: publicTransportScore,
       openTransportScore: openTransportScore,
       recommendations: recommendations,
     );
+
+    Logger.debug('Scores finaux - Marche: $walkingScore, Moto: $mototaxiScore, Bus: $publicTransportScore, Ouvert: $openTransportScore', 'WeatherService');
+    Logger.debug('Recommandations: ${recommendations.length}', 'WeatherService');
+    
+    return impact;
   }
 
   /// Conseils basés sur l'heure
@@ -284,6 +342,8 @@ class WeatherService {
 
   /// Données météo de démonstration
   WeatherConditions _getDemoWeather() {
+    Logger.debug('Génération données météo démo', 'WeatherService');
+    
     return WeatherConditions(
       temp: 28.0,
       feelsLike: 30.0,
@@ -300,6 +360,7 @@ class WeatherService {
   }
 
   void dispose() {
+    Logger.info('WeatherService disposé', 'WeatherService');
     _client.close();
   }
 }

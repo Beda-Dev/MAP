@@ -1,6 +1,6 @@
 // =============================================================================
 // GBAKAMAP - Application de transport public Côte d'Ivoire
-// Architecture: Provider + Repository Pattern
+// Version optimisée pour éviter les blocages
 // =============================================================================
 
 import 'package:flutter/material.dart';
@@ -15,6 +15,7 @@ import 'core/services/weather_service.dart';
 import 'core/services/location_service.dart';
 import 'core/services/cache_service.dart';
 import 'core/services/route_service.dart';
+import 'core/config/env_config.dart';
 import 'features/providers/map_provider.dart';
 import 'features/providers/transport_provider.dart';
 import 'features/providers/route_provider.dart';
@@ -32,23 +33,19 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // Initialisation Hive (cache local)
+  // Initialisation variables d'environnement
+  Logger.info('Démarrage application GbakaMap', 'Main');
+  await EnvConfig.init();
+  Logger.info('Configuration environnement chargée', 'Main');
+  Logger.debug('Mode debug: ${EnvConfig.debugMode}', 'Main');
+  Logger.debug('API timeout: ${EnvConfig.apiTimeoutSeconds}s', 'Main');
+
+  // Initialisation Hive (cache local) - RAPIDE
   await Hive.initFlutter();
   await CacheService.init();
-
-  // Permissions
-  await _requestPermissions();
+  Logger.info('Services initialisés avec succès', 'Main');
 
   runApp(const GbakaMapApp());
-}
-
-/// Demande des permissions nécessaires
-Future<void> _requestPermissions() async {
-  await [
-    Permission.location,
-    Permission.locationWhenInUse,
-    Permission.storage,
-  ].request();
 }
 
 class GbakaMapApp extends StatelessWidget {
@@ -125,7 +122,6 @@ class GbakaMapApp extends StatelessWidget {
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.light,
         home: const SplashScreenWrapper(),
-        // Configuration des routes
         routes: {
           '/map': (context) => const MainMapScreen(),
           '/route_search': (context) => const RouteSearchScreen(),
@@ -137,7 +133,7 @@ class GbakaMapApp extends StatelessWidget {
   }
 }
 
-/// Wrapper pour le splash screen avec initialisation
+/// Wrapper optimisé pour le splash screen
 class SplashScreenWrapper extends StatefulWidget {
   const SplashScreenWrapper({super.key});
 
@@ -146,6 +142,9 @@ class SplashScreenWrapper extends StatefulWidget {
 }
 
 class _SplashScreenWrapperState extends State<SplashScreenWrapper> {
+  bool _isInitializing = true;
+  String _statusMessage = 'Initialisation...';
+
   @override
   void initState() {
     super.initState();
@@ -154,12 +153,27 @@ class _SplashScreenWrapperState extends State<SplashScreenWrapper> {
 
   Future<void> _initializeApp() async {
     try {
-      // Initialiser le service de localisation
-      final locationService = context.read<LocationService>();
-      await locationService.initialize();
+      // Attendre que le premier frame soit affiché
+      await Future.delayed(const Duration(milliseconds: 100));
 
-      // Attendre 3 secondes minimum pour le splash
-      await Future.delayed(const Duration(seconds: 3));
+      // Demander les permissions en arrière-plan
+      _requestPermissionsAsync();
+
+      // Initialiser le service de localisation (non bloquant)
+      if (mounted) {
+        setState(() => _statusMessage = 'Configuration de la localisation...');
+      }
+      
+      final locationService = context.read<LocationService>();
+      
+      // Initialiser sans attendre une position précise
+      locationService.initialize().catchError((error) {
+        debugPrint('Erreur localisation: $error');
+        // Continuer même en cas d'erreur
+      });
+
+      // Attendre un minimum de 2 secondes pour l'UX
+      await Future.delayed(const Duration(seconds: 2));
 
       if (!mounted) return;
 
@@ -170,10 +184,14 @@ class _SplashScreenWrapperState extends State<SplashScreenWrapper> {
         ),
       );
     } catch (e) {
-      // En cas d'erreur, continuer quand même
+      debugPrint('Erreur initialisation: $e');
+      
       if (!mounted) return;
 
-      await Future.delayed(const Duration(seconds: 2));
+      // En cas d'erreur, continuer quand même après 2 secondes
+      await Future.delayed(const Duration(seconds: 1));
+
+      if (!mounted) return;
 
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -183,14 +201,26 @@ class _SplashScreenWrapperState extends State<SplashScreenWrapper> {
     }
   }
 
+  /// Demande des permissions de manière asynchrone
+  void _requestPermissionsAsync() {
+    [
+      Permission.location,
+      Permission.locationWhenInUse,
+    ].request().then((status) {
+      debugPrint('Permissions accordées: $status');
+    }).catchError((error) {
+      debugPrint('Erreur permissions: $error');
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return const SplashScreen();
+    return SplashScreen(statusMessage: _statusMessage);
   }
 }
 
 // =============================================================================
-// ÉCRANS TEMPORAIRES (À IMPLÉMENTER)
+// ÉCRANS TEMPORAIRES (optimisés)
 // =============================================================================
 
 class FavoritesScreen extends StatelessWidget {
@@ -217,6 +247,12 @@ class FavoritesScreen extends StatelessWidget {
                     'Aucun favori enregistré',
                     style: TextStyle(fontSize: 18, color: Colors.grey),
                   ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Appuyez sur ⭐ sur un arrêt pour l\'ajouter',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
                 ],
               ),
             );
@@ -242,8 +278,13 @@ class FavoritesScreen extends StatelessWidget {
                     },
                   ),
                   onTap: () {
-                    // TODO: Centrer la carte sur cet arrêt
                     Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Fonctionnalité à venir: centrer sur l\'arrêt'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
                   },
                 ),
               );
@@ -266,29 +307,70 @@ class SettingsScreen extends StatelessWidget {
       ),
       body: ListView(
         children: [
+          // Informations
           const ListTile(
-            leading: Icon(Icons.info),
+            leading: Icon(Icons.info_outline),
             title: Text('À propos'),
             subtitle: Text('GbakaMap v1.0.0'),
+          ),
+          const Divider(),
+
+          // Cache
+          ListTile(
+            leading: const Icon(Icons.storage),
+            title: const Text('Gestion du cache'),
+            subtitle: FutureBuilder<Map<String, int>>(
+              future: context.read<CacheService>().getCacheSizes(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Text('Calcul...');
+                final sizes = snapshot.data!;
+                final total = sizes.values.fold(0, (a, b) => a + b);
+                return Text('$total éléments en cache');
+              },
+            ),
           ),
           ListTile(
             leading: const Icon(Icons.delete_sweep),
             title: const Text('Vider le cache'),
             subtitle: const Text('Libérer de l\'espace'),
             onTap: () async {
-              final cacheService = context.read<CacheService>();
-              await cacheService.clearAllCaches();
-              
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Cache vidé avec succès')),
-                );
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Vider le cache ?'),
+                  content: const Text(
+                    'Cette action supprimera toutes les données en cache. '
+                    'Vos favoris seront conservés.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Annuler'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Vider'),
+                    ),
+                  ],
+                ),
+              );
+
+              if (confirmed == true && context.mounted) {
+                final cacheService = context.read<CacheService>();
+                await cacheService.clearAllCaches();
+                
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Cache vidé avec succès')),
+                  );
+                }
               }
             },
           ),
           ListTile(
             leading: const Icon(Icons.history),
             title: const Text('Effacer l\'historique'),
+            subtitle: const Text('Supprimer l\'historique de recherche'),
             onTap: () async {
               final cacheService = context.read<CacheService>();
               await cacheService.clearHistory();
@@ -300,34 +382,81 @@ class SettingsScreen extends StatelessWidget {
               }
             },
           ),
+
           const Divider(),
-          ListTile(
-            leading: const Icon(Icons.map),
-            title: const Text('Rayon de recherche'),
-            subtitle: Consumer<TransportProvider>(
-              builder: (context, provider, child) {
-                return Slider(
-                  value: provider.searchRadius,
-                  min: 500,
-                  max: 5000,
-                  divisions: 9,
-                  label: '${provider.searchRadius.toInt()}m',
-                  onChanged: (value) {
-                    provider.setSearchRadius(value);
-                  },
-                );
-              },
-            ),
+
+          // Paramètres de carte
+          const ListTile(
+            leading: Icon(Icons.map),
+            title: Text('Paramètres de carte'),
+            subtitle: Text('Rayon de recherche'),
           ),
+          Consumer<TransportProvider>(
+            builder: (context, provider, child) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Rayon de recherche'),
+                        Text(
+                          '${provider.searchRadius.toInt()}m',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    Slider(
+                      value: provider.searchRadius,
+                      min: 500,
+                      max: 5000,
+                      divisions: 9,
+                      label: '${provider.searchRadius.toInt()}m',
+                      onChanged: (value) {
+                        provider.setSearchRadius(value);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              );
+            },
+          ),
+
           const Divider(),
+
+          // Informations système
+          const ListTile(
+            leading: Icon(Icons.phone_android),
+            title: Text('Système'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.location_on),
+            title: const Text('Permissions de localisation'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              openAppSettings();
+            },
+          ),
+
+          const Divider(),
+
+          // Crédits
           const ListTile(
             leading: Icon(Icons.code),
             title: Text('Version'),
-            subtitle: Text('1.0.0'),
+            subtitle: Text('1.0.0 (Build 1)'),
           ),
           const ListTile(
-            leading: Icon(Icons.copyright),
+            leading: Icon(Icons.favorite, color: Colors.red),
             title: Text('Développé avec ❤️ pour la Côte d\'Ivoire'),
+          ),
+          const ListTile(
+            leading: Icon(Icons.map_outlined),
+            title: Text('Données OpenStreetMap'),
+            subtitle: Text('© OpenStreetMap contributors'),
           ),
         ],
       ),

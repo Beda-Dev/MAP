@@ -1,13 +1,17 @@
 // =============================================================================
-// SPLASH SCREEN - Écran de démarrage animé
-// Fichier: lib/features/splash/splash_screen.dart
+// SPLASH SCREEN - Écran de démarrage optimisé
 // =============================================================================
 
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  final String? statusMessage;
+  
+  const SplashScreen({
+    super.key,
+    this.statusMessage,
+  });
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -18,7 +22,6 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
-  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
@@ -26,7 +29,7 @@ class _SplashScreenState extends State<SplashScreen>
     
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1200),
     );
     
     // Animation de fade
@@ -38,21 +41,10 @@ class _SplashScreenState extends State<SplashScreen>
     );
     
     // Animation de scale (bounce)
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
+    _scaleAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.2, 0.8, curve: Curves.elasticOut),
-      ),
-    );
-    
-    // Animation de slide (texte)
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.5),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.5, 1.0, curve: Curves.easeOut),
+        curve: const Interval(0.2, 0.7, curve: Curves.elasticOut),
       ),
     );
     
@@ -88,26 +80,20 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
                 
-                const SizedBox(height: 40),
+                const SizedBox(height: 32),
                 
-                // Titre animé
-                SlideTransition(
-                  position: _slideAnimation,
-                  child: FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: _buildTitle(),
-                  ),
+                // Titre
+                FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: _buildTitle(),
                 ),
                 
                 const SizedBox(height: 12),
                 
                 // Sous-titre
-                SlideTransition(
-                  position: _slideAnimation,
-                  child: FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: _buildSubtitle(),
-                  ),
+                FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: _buildSubtitle(),
                 ),
                 
                 const Spacer(flex: 2),
@@ -118,15 +104,22 @@ class _SplashScreenState extends State<SplashScreen>
                   child: _buildLoadingIndicator(),
                 ),
                 
+                const SizedBox(height: 16),
+                
+                // Message de status
+                if (widget.statusMessage != null)
+                  FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: Text(
+                      widget.statusMessage!,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                
                 const SizedBox(height: 40),
-                
-                // Version
-                FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: _buildVersion(),
-                ),
-                
-                const SizedBox(height: 20),
               ],
             ),
           ),
@@ -137,7 +130,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   Widget _buildLogo() {
     return Container(
-      padding: const EdgeInsets.all(32),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.15),
         shape: BoxShape.circle,
@@ -152,7 +145,7 @@ class _SplashScreenState extends State<SplashScreen>
       child: const Icon(
         Icons.map,
         color: Colors.white,
-        size: 120,
+        size: 80,
       ),
     );
   }
@@ -162,9 +155,9 @@ class _SplashScreenState extends State<SplashScreen>
       'GbakaMap',
       style: TextStyle(
         color: Colors.white,
-        fontSize: 48,
+        fontSize: 42,
         fontWeight: FontWeight.bold,
-        letterSpacing: 2,
+        letterSpacing: 1.5,
         shadows: [
           Shadow(
             color: Colors.black26,
@@ -183,7 +176,7 @@ class _SplashScreenState extends State<SplashScreen>
         'Votre guide de transport en Côte d\'Ivoire',
         style: TextStyle(
           color: Colors.white.withOpacity(0.9),
-          fontSize: 16,
+          fontSize: 14,
           fontWeight: FontWeight.w300,
           letterSpacing: 0.5,
         ),
@@ -193,38 +186,14 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Widget _buildLoadingIndicator() {
-    return Column(
-      children: [
-        SizedBox(
-          width: 40,
-          height: 40,
-          child: CircularProgressIndicator(
-            strokeWidth: 3,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              Colors.white.withOpacity(0.8),
-            ),
-          ),
+    return SizedBox(
+      width: 30,
+      height: 30,
+      child: CircularProgressIndicator(
+        strokeWidth: 2.5,
+        valueColor: AlwaysStoppedAnimation<Color>(
+          Colors.white.withOpacity(0.8),
         ),
-        const SizedBox(height: 16),
-        Text(
-          'Chargement...',
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
-            fontSize: 14,
-            fontWeight: FontWeight.w400,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVersion() {
-    return Text(
-      'Version 1.0.0',
-      style: TextStyle(
-        color: Colors.white.withOpacity(0.5),
-        fontSize: 12,
-        fontWeight: FontWeight.w300,
       ),
     );
   }
