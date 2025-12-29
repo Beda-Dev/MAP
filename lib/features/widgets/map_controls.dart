@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
 import '../../core/theme/app_colors.dart';
-
 
 // =============================================================================
 // MAP CONTROLS - Contrôles de la carte
@@ -51,13 +48,19 @@ class MapControls extends StatelessWidget {
     Color? iconColor,
   }) {
     return Container(
-      decoration: BoxShadow(
-        color: Colors.black.withOpacity(0.2),
-        blurRadius: 8,
-        offset: const Offset(0, 2),
-      ) as BoxDecoration?,
-      child: Material(
+      decoration: BoxDecoration(
         color: backgroundColor ?? Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: onPressed,
