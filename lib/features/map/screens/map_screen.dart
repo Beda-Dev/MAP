@@ -1,5 +1,5 @@
 // =============================================================================
-// MAP SCREEN - Avec affichage des routes de transport (CORRIGÉ)
+// MAP SCREEN - Version corrigée avec marqueur réduit
 // =============================================================================
 
 import 'package:flutter/material.dart';
@@ -137,27 +137,29 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
                   ),
                 ),
 
-                // Marqueur de position utilisateur
+                // CORRECTION: Marqueur de position utilisateur RÉDUIT
                 if (mapProvider.isInitialized)
                   MarkerLayer(
                     markers: [
                       Marker(
                         point: mapProvider.center,
-                        width: 50,
-                        height: 50,
+                        width: 24, // RÉDUIT de 50 à 24
+                        height: 24,
                         child: Container(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.blue.withOpacity(0.3),
+                            color: Colors.blue.withOpacity(0.2), // Plus transparent
                             border: Border.all(
                               color: Colors.blue,
-                              width: 3,
+                              width: 2,
                             ),
                           ),
-                          child: const Icon(
-                            Icons.my_location,
-                            color: Colors.blue,
-                            size: 20,
+                          child: const Center(
+                            child: Icon(
+                              Icons.circle,
+                              color: Colors.blue,
+                              size: 8, // Petit point au centre
+                            ),
                           ),
                         ),
                       ),

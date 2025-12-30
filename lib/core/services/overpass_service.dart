@@ -1,5 +1,5 @@
 // =============================================================================
-// OVERPASS SERVICE - Avec support des routes de transport
+// OVERPASS SERVICE - Version corrigée avec requête simplifiée
 // =============================================================================
 
 import 'dart:async';
@@ -17,7 +17,6 @@ enum TransportType {
   all,
 }
 
-/// Représente une route de transport OSM
 class TransportRoute {
   final String id;
   final String name;
@@ -180,44 +179,43 @@ class OverpassService {
   }) async {
     final cacheKey = '${center.latitude},${center.longitude},$radiusMeters,$type';
     
-    Logger.debug('Début getTransportData', 'OverpassService');
+    Logger.debug('=== DÉBUT getTransportData ===', 'OverpassService');
     Logger.debug('Position: ${center.latitude}, ${center.longitude}', 'OverpassService');
     Logger.debug('Rayon: ${radiusMeters}m', 'OverpassService');
     Logger.debug('Type: $type', 'OverpassService');
     Logger.debug('Force refresh: $forceRefresh', 'OverpassService');
-    Logger.debug('Cache key: $cacheKey', 'OverpassService');
 
     if (!forceRefresh && _isCacheValid(cacheKey)) {
       final cachedStops = _stopCache[cacheKey] ?? [];
       final cachedRoutes = _routeCache[cacheKey] ?? [];
-      Logger.info('Données récupérées depuis le cache', 'OverpassService');
-      Logger.debug('Arrêts en cache: ${cachedStops.length}', 'OverpassService');
-      Logger.debug('Routes en cache: ${cachedRoutes.length}', 'OverpassService');
+      Logger.info('✅ Données récupérées depuis le cache', 'OverpassService');
+      Logger.debug('Arrêts: ${cachedStops.length}, Routes: ${cachedRoutes.length}', 'OverpassService');
       return {
         'stops': cachedStops,
         'routes': cachedRoutes,
       };
     }
 
-    // Réduire le rayon pour éviter les requêtes trop lourdes
+    // CORRECTION: Utiliser un rayon raisonnable
     final adjustedRadius = radiusMeters > 2000 ? 2000.0 : radiusMeters;
     if (adjustedRadius != radiusMeters) {
-      Logger.info('Rayon réduit pour éviter timeout: ${radiusMeters}m -> ${adjustedRadius}m', 'OverpassService');
+      Logger.warning('⚠️ Rayon réduit: ${radiusMeters}m → ${adjustedRadius}m', 'OverpassService');
     }
 
-    final query = _buildOptimizedOverpassQuery(
+    final query = _buildSimplifiedOverpassQuery(
       lat: center.latitude,
       lon: center.longitude,
       radius: adjustedRadius,
       type: type,
     );
 
-    Logger.debug('Requête Overpass générée', 'OverpassService');
-    Logger.debug('Taille requête: ${query.length} caractères', 'OverpassService');
+    Logger.debug('📝 Requête générée (${query.length} caractères)', 'OverpassService');
+    Logger.debug('Requête complète:\n$query', 'OverpassService');
 
     try {
       final url = Uri.parse(EnvConfig.overpassApiUrl);
-      Logger.api('POST', url.toString(), {'query_length': query.length});
+      Logger.info('🌐 Envoi requête POST vers Overpass API', 'OverpassService');
+      Logger.debug('URL: $url', 'OverpassService');
       
       final response = await _client.post(
         url,
@@ -226,50 +224,53 @@ class OverpassService {
           'User-Agent': 'GbakaMap/1.0 Flutter App',
         },
         body: 'data=${Uri.encodeComponent(query)}',
-      ).timeout(const Duration(seconds: 15)); // Timeout plus court pour éviter les blocages
+      ).timeout(const Duration(seconds: 30)); // CORRECTION: Timeout augmenté
 
-      Logger.apiResponse(url.toString(), {
-        'statusCode': response.statusCode,
-        'contentLength': response.body.length,
-        'contentType': response.headers['content-type'],
-      }, response.statusCode);
+      Logger.info('📡 Réponse reçue - Status: ${response.statusCode}', 'OverpassService');
+      Logger.debug('Taille réponse: ${response.body.length} octets', 'OverpassService');
+      Logger.debug('Content-Type: ${response.headers['content-type']}', 'OverpassService');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        Logger.info('=== DONNÉES JSON BRUTES D\'OVERPASS ===', 'OverpassService');
-        Logger.debug('JSON brut reçu: ${response.body}', 'OverpassService');
-        Logger.info('Structure JSON: ${data.runtimeType}', 'OverpassService');
-        Logger.info('Clés principales: ${data.keys.toList()}', 'OverpassService');
+        
+        Logger.info('=== ANALYSE RÉPONSE JSON ===', 'OverpassService');
+        Logger.debug('Type données: ${data.runtimeType}', 'OverpassService');
+        Logger.debug('Clés: ${data.keys.toList()}', 'OverpassService');
+        
         if (data['elements'] != null) {
           final elements = data['elements'] as List;
-          Logger.info('Nombre d\'éléments: ${elements.length}', 'OverpassService');
-          Logger.info('Types d\'éléments: ${elements.map((e) => e['type']).toSet().toList()}', 'OverpassService');
+          Logger.info('✅ ${elements.length} éléments reçus', 'OverpassService');
           
-          Logger.info('=== TOUS LES ÉLÉMENTS DÉTAILLÉS ===', 'OverpassService');
-          for (int i = 0; i < elements.length; i++) {
+          final types = elements.map((e) => e['type']).toSet().toList();
+          Logger.debug('Types d\'éléments: $types', 'OverpassService');
+          
+          // Compter par type
+          final nodeCount = elements.where((e) => e['type'] == 'node').length;
+          final wayCount = elements.where((e) => e['type'] == 'way').length;
+          final relationCount = elements.where((e) => e['type'] == 'relation').length;
+          Logger.debug('Nodes: $nodeCount, Ways: $wayCount, Relations: $relationCount', 'OverpassService');
+          
+          // Afficher les premiers éléments
+          Logger.info('=== ÉCHANTILLON ÉLÉMENTS (5 premiers) ===', 'OverpassService');
+          for (int i = 0; i < elements.length && i < 5; i++) {
             final element = elements[i];
-            Logger.info('Élément $i: ${element['type']} (ID: ${element['id']})', 'OverpassService');
-            Logger.debug('  Données complètes: $element', 'OverpassService');
-            
+            Logger.debug('[$i] ${element['type']} ID:${element['id']}', 'OverpassService');
             if (element['tags'] != null) {
               final tags = element['tags'] as Map<String, dynamic>;
-              Logger.debug('  Tags: ${tags.keys.toList()}', 'OverpassService');
+              Logger.debug('    Tags: ${tags.keys.take(5).toList()}', 'OverpassService');
               if (tags['name'] != null) {
-                Logger.debug('  Nom: ${tags['name']}', 'OverpassService');
-              }
-              if (tags['route'] != null) {
-                Logger.debug('  Route: ${tags['route']}', 'OverpassService');
-              }
-              if (tags['highway'] != null) {
-                Logger.debug('  Highway: ${tags['highway']}', 'OverpassService');
+                Logger.debug('    Nom: ${tags['name']}', 'OverpassService');
               }
             }
-            Logger.info('---', 'OverpassService');
+            if (element['lat'] != null && element['lon'] != null) {
+              Logger.debug('    Position: ${element['lat']}, ${element['lon']}', 'OverpassService');
+            }
           }
-          Logger.info('=====================================', 'OverpassService');
+        } else {
+          Logger.warning('⚠️ Aucun élément dans la réponse', 'OverpassService');
         }
-        Logger.info('========================================', 'OverpassService');
         
+        Logger.info('🔄 Parsing des données...', 'OverpassService');
         final result = _parseOverpassResponseWithRoutes(data);
         final stops = result['stops'] as List<TransportStop>;
         final routes = result['routes'] as List<TransportRoute>;
@@ -278,125 +279,66 @@ class OverpassService {
         _routeCache[cacheKey] = routes;
         _cacheExpiry[cacheKey] = DateTime.now().add(_cacheDuration);
 
-        Logger.info('Données Overpass récupérées avec succès', 'OverpassService');
-        Logger.info('Arrêts trouvés: ${stops.length}', 'OverpassService');
-        Logger.info('Routes trouvées: ${routes.length}', 'OverpassService');
-        Logger.cache('SET', cacheKey, {
-          'stops_count': stops.length,
-          'routes_count': routes.length,
-          'expiry': _cacheExpiry[cacheKey]!.toIso8601String(),
-        });
+        Logger.info('✅ SUCCÈS - Arrêts: ${stops.length}, Routes: ${routes.length}', 'OverpassService');
+        Logger.debug('Cache mis à jour avec expiration: ${_cacheExpiry[cacheKey]}', 'OverpassService');
 
         return result;
       } else if (response.statusCode == 504) {
-        Logger.error('Timeout serveur Overpass (504)', 'OverpassService', response.body);
-        // Retourner des données vides plutôt que de planter
-        return {
-          'stops': <TransportStop>[],
-          'routes': <TransportRoute>[],
-        };
+        Logger.error('❌ Timeout serveur (504)', 'OverpassService', response.body);
+        return {'stops': <TransportStop>[], 'routes': <TransportRoute>[]};
       } else if (response.statusCode == 429) {
-        Logger.error('Rate limit Overpass (429)', 'OverpassService', response.body);
-        // Retourner des données vides plutôt que de planter
-        return {
-          'stops': <TransportStop>[],
-          'routes': <TransportRoute>[],
-        };
+        Logger.error('❌ Rate limit (429)', 'OverpassService', response.body);
+        return {'stops': <TransportStop>[], 'routes': <TransportRoute>[]};
       } else {
-        Logger.error('Erreur Overpass: ${response.statusCode}', 'OverpassService', response.body);
+        Logger.error('❌ Erreur HTTP ${response.statusCode}', 'OverpassService', response.body);
         throw Exception('Erreur Overpass: ${response.statusCode}');
       }
     } catch (e, stackTrace) {
-      Logger.error('Exception getTransportData', 'OverpassService', e);
-      Logger.debug('Stack trace: $stackTrace', 'OverpassService');
+      Logger.error('❌ Exception getTransportData', 'OverpassService', e);
+      Logger.debug('Stack trace:\n$stackTrace', 'OverpassService');
       
       if (_stopCache.containsKey(cacheKey)) {
-        Logger.info('Tentative de récupération depuis le cache après erreur', 'OverpassService');
+        Logger.info('🔄 Récupération depuis cache après erreur', 'OverpassService');
         return {
           'stops': _stopCache[cacheKey] ?? [],
           'routes': _routeCache[cacheKey] ?? [],
         };
       }
-      Logger.error('Aucun cache disponible, retour données vides', 'OverpassService');
-      // Retourner des données vides plutôt que de planter
-      return {
-        'stops': <TransportStop>[],
-        'routes': <TransportRoute>[],
-      };
+      
+      Logger.warning('⚠️ Retour données vides', 'OverpassService');
+      return {'stops': <TransportStop>[], 'routes': <TransportRoute>[]};
     }
   }
 
-  /// Requête Overpass optimisée pour Abidjan et transports ivoiriens
-  String _buildOptimizedOverpassQuery({
+  /// CORRECTION: Requête Overpass simplifiée qui fonctionne réellement
+  String _buildSimplifiedOverpassQuery({
     required double lat,
     required double lon,
     required double radius,
     required TransportType type,
   }) {
-    // Requête spécifique pour Abidjan avec focus sur les transports locaux
+    Logger.debug('Construction requête simplifiée', 'OverpassService');
+    Logger.debug('Position: $lat, $lon - Rayon: $radius', 'OverpassService');
+    
+    // Requête SIMPLE qui renvoie VRAIMENT des résultats
     return '''
-[out:json][timeout:60][maxsize:1073741824];
-
-// Zone administrative d'Abidjan
-area["name"="Abidjan"]["boundary"="administrative"]->.searchArea;
-
-// Relations correspondant aux gbakas et bus locaux
+[out:json][timeout:25];
 (
-  relation
-    ["type"="route"]
-    ["route"="bus"]
-    ["name"~"[Gg]baka"]
-    (area.searchArea);
-
-  relation
-    ["type"="route"]
-    ["route"="bus"]
-    ["bus"="share_taxi"]
-    (area.searchArea);
-
-  relation
-    ["type"="route"]
-    ["route"="bus"]
-    ["minibus"="yes"]
-    (area.searchArea);
-
-  relation
-    ["type"="route"]
-    ["route"="share_taxi"]
-    (area.searchArea);
-)->.gbakaRoutes;
-
-// Contenu détaillé des routes gbaka
-(
-  // Arrêts (noeuds)
-  node(r.gbakaRoutes)
-    ["highway"~"bus_stop|platform"];
-
-  // Segments de trajet
-  way(r.gbakaRoutes);
-
-  // Relations complètes
-  .gbakaRoutes;
-
-  // Arrêts supplémentaires dans la zone de recherche
-  node(around:$radius,$lat,$lon)
-    ["highway"="bus_stop"];
-  node(around:$radius,$lat,$lon)
-    ["public_transport"="platform"];
-  node(around:$radius,$lat,$lon)
-    ["amenity"="taxi"];
-  node(around:$radius,$lat,$lon)
-    ["minibus"="yes"];
-  node(around:$radius,$lat,$lon)
-    ["gbaka"="yes"];
-  node(around:$radius,$lat,$lon)
-    ["woro_woro"="yes"];
-  node(around:$radius,$lat,$lon)
-    ["motorcycle_taxi"="yes"];
+  // Arrêts de bus standard
+  node(around:$radius,$lat,$lon)["highway"="bus_stop"];
+  
+  // Plateformes de transport public
+  node(around:$radius,$lat,$lon)["public_transport"="platform"];
+  node(around:$radius,$lat,$lon)["public_transport"="stop_position"];
+  
+  // Stations de taxi
+  node(around:$radius,$lat,$lon)["amenity"="taxi"];
+  
+  // Transport informel (si taggé)
+  node(around:$radius,$lat,$lon)["minibus"="yes"];
+  node(around:$radius,$lat,$lon)["share_taxi"="yes"];
 );
-
-// Sortie avec toutes les métadonnées
-out meta;
+out body;
 >;
 out skel qt;
 ''';
@@ -404,10 +346,10 @@ out skel qt;
 
   /// Parse la réponse incluant routes et arrêts
   Map<String, dynamic> _parseOverpassResponseWithRoutes(Map<String, dynamic> data) {
-    Logger.debug('Début parsing réponse Overpass', 'OverpassService');
+    Logger.debug('=== DÉBUT PARSING ===', 'OverpassService');
     
     final elements = data['elements'] as List? ?? [];
-    Logger.debug('Éléments à parser: ${elements.length}', 'OverpassService');
+    Logger.info('📊 ${elements.length} éléments à parser', 'OverpassService');
     
     final stops = <TransportStop>[];
     final routes = <TransportRoute>[];
@@ -415,65 +357,88 @@ out skel qt;
     final routeMembers = <String, List<String>>{};
     
     int nodeCount = 0, wayCount = 0, relationCount = 0;
+    int stopsFound = 0, stopsSkipped = 0;
+    
+    Logger.debug('🔍 Premier passage: identification éléments', 'OverpassService');
     
     // Premier passage: collecter ways et relations
     for (final element in elements) {
-      if (element['type'] == 'way' && element['nodes'] != null) {
-        ways[element['id'].toString()] = [];
-        wayCount++;
-      } else if (element['type'] == 'relation') {
-        final tags = element['tags'] as Map<String, dynamic>? ?? {};
-        if (tags['type'] == 'route') {
-          final route = TransportRoute.fromJson(element);
-          routes.add(route);
+      try {
+        if (element['type'] == 'way' && element['nodes'] != null) {
+          ways[element['id'].toString()] = [];
+          wayCount++;
+          
+        } else if (element['type'] == 'relation') {
           relationCount++;
+          final tags = element['tags'] as Map<String, dynamic>? ?? {};
+          if (tags['type'] == 'route') {
+            final route = TransportRoute.fromJson(element);
+            routes.add(route);
+            
+            final members = element['members'] as List? ?? [];
+            routeMembers[route.id] = members
+                .where((m) => m['type'] == 'way')
+                .map((m) => m['ref'].toString())
+                .toList();
+            
+            Logger.debug('  Route: ${route.name} (${members.length} membres)', 'OverpassService');
+          }
           
-          // Stocker les membres
-          final members = element['members'] as List? ?? [];
-          routeMembers[route.id] = members
-              .where((m) => m['type'] == 'way')
-              .map((m) => m['ref'].toString())
-              .toList();
+        } else if (element['type'] == 'node' && element['lat'] != null && element['lon'] != null) {
+          nodeCount++;
+          final tags = element['tags'] as Map<String, dynamic>? ?? {};
           
-          Logger.debug('Route trouvée: ${route.name} (${route.id})', 'OverpassService');
-          Logger.debug('Membres de la route: ${routeMembers[route.id]?.length ?? 0}', 'OverpassService');
-        }
-      } else if (element['type'] == 'node' && element['lat'] != null) {
-        final tags = element['tags'] as Map<String, dynamic>? ?? {};
-        if (tags['highway'] == 'bus_stop' || 
-            tags['public_transport'] != null ||
-            tags['amenity'] == 'taxi') {
-          try {
-            stops.add(TransportStop.fromJson(element));
-            nodeCount++;
-          } catch (e) {
-            Logger.warning('Erreur parsing arrêt: $e', 'OverpassService');
-            continue;
+          // CORRECTION: Accepter TOUS les nodes avec tags de transport
+          final isTransportStop = tags['highway'] == 'bus_stop' || 
+              tags['public_transport'] != null ||
+              tags['amenity'] == 'taxi' ||
+              tags['minibus'] == 'yes' ||
+              tags['share_taxi'] == 'yes';
+              
+          if (isTransportStop) {
+            try {
+              final stop = TransportStop.fromJson(element);
+              stops.add(stop);
+              stopsFound++;
+              
+              if (stopsFound <= 3) {
+                Logger.debug('  ✅ Arrêt: ${stop.name} (${stop.type})', 'OverpassService');
+              }
+            } catch (e) {
+              stopsSkipped++;
+              Logger.warning('  ⚠️ Erreur parsing arrêt: $e', 'OverpassService');
+            }
           }
         }
+      } catch (e) {
+        Logger.warning('⚠️ Erreur élément: $e', 'OverpassService');
       }
     }
     
-    Logger.debug('Comptage initial - Nodes: $nodeCount, Ways: $wayCount, Relations: $relationCount', 'OverpassService');
-    Logger.debug('Arrêts extraits: ${stops.length}', 'OverpassService');
-    Logger.debug('Routes extraites: ${routes.length}', 'OverpassService');
+    Logger.info('📊 Comptage: Nodes=$nodeCount, Ways=$wayCount, Relations=$relationCount', 'OverpassService');
+    Logger.info('🎯 Arrêts trouvés=$stopsFound, ignorés=$stopsSkipped', 'OverpassService');
+    Logger.info('🚏 Routes extraites: ${routes.length}', 'OverpassService');
     
     // Second passage: construire géométries des ways
+    Logger.debug('🔄 Second passage: géométries', 'OverpassService');
+    int geometryCount = 0;
     for (final element in elements) {
       if (element['type'] == 'node' && element['lat'] != null) {
         final nodeId = element['id'].toString();
         final lat = (element['lat'] as num).toDouble();
         final lon = (element['lon'] as num).toDouble();
         
-        // Ajouter aux ways qui le référencent
         for (final wayEntry in ways.entries) {
           ways[wayEntry.key]!.add(LatLng(lat, lon));
         }
+        geometryCount++;
       }
     }
+    Logger.debug('  Géométries construites: $geometryCount points', 'OverpassService');
     
     // Associer géométries aux routes
-    for (final route in routes) {
+    for (int i = 0; i < routes.length; i++) {
+      final route = routes[i];
       final memberIds = routeMembers[route.id] ?? [];
       final geometry = <LatLng>[];
       
@@ -483,8 +448,7 @@ out skel qt;
         }
       }
       
-      // Mise à jour avec la géométrie
-      routes[routes.indexOf(route)] = TransportRoute(
+      routes[i] = TransportRoute(
         id: route.id,
         name: route.name,
         type: route.type,
@@ -494,25 +458,33 @@ out skel qt;
         tags: route.tags,
       );
       
-      Logger.debug('Géométrie route ${route.name}: ${geometry.length} points', 'OverpassService');
+      if (geometry.isNotEmpty) {
+        Logger.debug('  Route ${route.name}: ${geometry.length} points', 'OverpassService');
+      }
     }
 
+    Logger.debug('🧹 Suppression doublons...', 'OverpassService');
+    final filtered = _removeDuplicatesByProximity(stops);
+    
     final result = {
-      'stops': _removeDuplicatesByProximity(stops),
+      'stops': filtered,
       'routes': routes,
     };
     
-    final finalStops = result['stops'] as List<TransportStop>;
-    Logger.info('Parsing terminé - Arrêts finaux: ${finalStops.length}, Routes: ${routes.length}', 'OverpassService');
+    Logger.info('✅ PARSING TERMINÉ - Arrêts: ${filtered.length}, Routes: ${routes.length}', 'OverpassService');
+    Logger.info('======================', 'OverpassService');
     
     return result;
   }
 
   /// Supprime les doublons par proximité
   List<TransportStop> _removeDuplicatesByProximity(List<TransportStop> stops) {
-    if (stops.isEmpty) return stops;
+    if (stops.isEmpty) {
+      Logger.debug('Aucun arrêt à filtrer', 'OverpassService');
+      return stops;
+    }
 
-    Logger.debug('Suppression doublons - ${stops.length} arrêts initiaux', 'OverpassService');
+    Logger.debug('🧹 Filtrage doublons: ${stops.length} arrêts initiaux', 'OverpassService');
     
     final filtered = <TransportStop>[];
     const Distance distance = Distance();
@@ -531,7 +503,9 @@ out skel qt;
         if (dist < 50) {
           isDuplicate = true;
           duplicatesRemoved++;
-          Logger.debug('Doublon détecté: ${stop.name} (${dist.toStringAsFixed(1)}m)', 'OverpassService');
+          if (duplicatesRemoved <= 3) {
+            Logger.debug('  🗑️ Doublon: ${stop.name} (${dist.toStringAsFixed(1)}m)', 'OverpassService');
+          }
           break;
         }
       }
@@ -541,18 +515,19 @@ out skel qt;
       }
     }
 
-    Logger.info('Doublons supprimés: $duplicatesRemoved, restants: ${filtered.length}', 'OverpassService');
+    Logger.info('✅ Doublons supprimés: $duplicatesRemoved, restants: ${filtered.length}', 'OverpassService');
     return filtered;
   }
 
   bool _isCacheValid(String key) {
     if (!_cacheExpiry.containsKey(key)) {
-      Logger.debug('Cache non trouvé pour clé: $key', 'OverpassService');
       return false;
     }
     final isValid = DateTime.now().isBefore(_cacheExpiry[key]!);
-    final timeUntilExpiry = _cacheExpiry[key]!.difference(DateTime.now());
-    Logger.debug('Cache $key: valide=$isValid, expire dans ${timeUntilExpiry.inMinutes}min', 'OverpassService');
+    if (isValid) {
+      final remaining = _cacheExpiry[key]!.difference(DateTime.now());
+      Logger.debug('Cache valide: ${remaining.inMinutes}min restantes', 'OverpassService');
+    }
     return isValid;
   }
 
@@ -562,11 +537,11 @@ out skel qt;
     _stopCache.clear();
     _routeCache.clear();
     _cacheExpiry.clear();
-    Logger.info('Cache vidé - $stopCount arrêts, $routeCount routes supprimés', 'OverpassService');
+    Logger.info('🗑️ Cache vidé: $stopCount arrêts, $routeCount routes', 'OverpassService');
   }
 
   void dispose() {
-    Logger.info('OverpassService disposé', 'OverpassService');
+    Logger.info('👋 OverpassService disposé', 'OverpassService');
     _client.close();
     clearCache();
   }

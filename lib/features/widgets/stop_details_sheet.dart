@@ -1,11 +1,17 @@
 // =============================================================================
-// STOP DETAILS SHEET - Affichage détaillé d'un arrêt
+// STOP DETAILS SHEET - Avec toutes les fonctionnalités
 // =============================================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/services/overpass_service.dart';
+import '../../core/config/env_config.dart';
+import '../providers/route_provider.dart';
+import '../map/screens/route_search_screen.dart';
 
 class StopDetailsSheet extends StatelessWidget {
   final TransportStop stop;
@@ -21,6 +27,11 @@ class StopDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Logger.info('Affichage détails arrêt: ${stop.name}', 'StopDetailsSheet');
+    Logger.debug('Position: ${stop.position.latitude}, ${stop.position.longitude}', 'StopDetailsSheet');
+    Logger.debug('Type: ${stop.type}', 'StopDetailsSheet');
+    Logger.debug('Transports: ${stop.availableTransports.map((t) => t.name).join(", ")}', 'StopDetailsSheet');
+    
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize: 0.3,
@@ -74,7 +85,20 @@ class StopDetailsSheet extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    onPressed: onToggleFavorite,
+                    onPressed: () {
+                      Logger.info('Toggle favori: ${stop.name}', 'StopDetailsSheet');
+                      onToggleFavorite();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            isFavorite 
+                                ? '❤️ Ajouté aux favoris' 
+                                : '💔 Retiré des favoris',
+                          ),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
                     icon: Icon(
                       isFavorite ? Icons.favorite : Icons.favorite_border,
                       color: isFavorite ? Colors.red : Colors.grey,
@@ -97,7 +121,7 @@ class StopDetailsSheet extends StatelessWidget {
               const SizedBox(height: 20),
 
               // Coordonnées
-              _buildCoordinates(),
+              _buildCoordinates(context),
 
               const SizedBox(height: 20),
 
@@ -226,7 +250,9 @@ class StopDetailsSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildCoordinates() {
+  Widget _buildCoordinates(BuildContext context) {
+    Logger.debug('Affichage coordonnées: ${stop.position.latitude}, ${stop.position.longitude}', 'StopDetailsSheet');
+    
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -236,12 +262,23 @@ class StopDetailsSheet extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Coordonnées',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Coordonnées',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.copy, size: 18),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => _copyCoordinates(context),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(
@@ -261,7 +298,23 @@ class StopDetailsSheet extends StatelessWidget {
     );
   }
 
+  void _copyCoordinates(BuildContext context) {
+    Logger.info('Copie coordonnées: ${stop.position.latitude}, ${stop.position.longitude}', 'StopDetailsSheet');
+    
+    final coords = '${stop.position.latitude}, ${stop.position.longitude}';
+    Clipboard.setData(ClipboardData(text: coords));
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('📋 Coordonnées copiées'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   Widget _buildOSMTags() {
+    Logger.debug('Affichage ${stop.tags.length} tags OSM', 'StopDetailsSheet');
+    
     return ExpansionTile(
       title: const Text(
         'Tags OpenStreetMap',
@@ -291,10 +344,7 @@ class StopDetailsSheet extends StatelessWidget {
       children: [
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: () {
-              // TODO: Implémenter l'itinéraire
-              Navigator.pop(context);
-            },
+            onPressed: () => _navigateToRoute(context),
             icon: const Icon(Icons.directions),
             label: const Text('Itinéraire'),
             style: ElevatedButton.styleFrom(
@@ -310,10 +360,7 @@ class StopDetailsSheet extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(
           child: OutlinedButton.icon(
-            onPressed: () {
-              // TODO: Implémenter le partage
-              Navigator.pop(context);
-            },
+            onPressed: () => _shareStop(context),
             icon: const Icon(Icons.share),
             label: const Text('Partager'),
             style: OutlinedButton.styleFrom(
@@ -327,6 +374,69 @@ class StopDetailsSheet extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  void _navigateToRoute(BuildContext context) {
+    Logger.info('Navigation vers itinéraire pour: ${stop.name}', 'StopDetailsSheet');
+    Logger.debug('Destination: ${stop.position.latitude}, ${stop.position.longitude}', 'StopDetailsSheet');
+    
+    Navigator.pop(context); // Fermer le bottom sheet
+    
+    // Naviguer vers l'écran de recherche d'itinéraire avec destination prédéfinie
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RouteSearchScreen(
+          initialTo: stop.position,
+        ),
+      ),
+    );
+    
+    Logger.debug('Navigation lancée vers écran itinéraire', 'StopDetailsSheet');
+  }
+
+  void _shareStop(BuildContext context) {
+    Logger.info('Partage arrêt: ${stop.name}', 'StopDetailsSheet');
+    Logger.debug('Position: ${stop.position.latitude}, ${stop.position.longitude}', 'StopDetailsSheet');
+    
+    final googleMapsUrl = 'https://www.google.com/maps/search/?api=1&query=${stop.position.latitude},${stop.position.longitude}';
+    final osmUrl = 'https://www.openstreetmap.org/?mlat=${stop.position.latitude}&mlon=${stop.position.longitude}#map=18/${stop.position.latitude}/${stop.position.longitude}';
+    
+    final message = '''
+🚏 ${stop.name}
+📍 ${_getStopTypeLabel(stop.type)}
+
+Coordonnées:
+${stop.position.latitude.toStringAsFixed(6)}, ${stop.position.longitude.toStringAsFixed(6)}
+
+Transports disponibles:
+${stop.availableTransports.map((t) => '• ${_getTransportTypeLabel(t)}').join('\n')}
+
+🗺️ Voir sur Google Maps:
+$googleMapsUrl
+
+🗺️ Voir sur OpenStreetMap:
+$osmUrl
+
+Partagé depuis GbakaMap 🇨🇮
+''';
+
+    Logger.debug('Message de partage préparé (${message.length} caractères)', 'StopDetailsSheet');
+    
+    Share.share(
+      message,
+      subject: 'Arrêt de transport: ${stop.name}',
+    ).then((_) {
+      Logger.info('✅ Partage effectué', 'StopDetailsSheet');
+    }).catchError((error) {
+      Logger.error('❌ Erreur partage', 'StopDetailsSheet', error);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors du partage: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    });
   }
 
   String _getStopTypeLabel(String type) {
