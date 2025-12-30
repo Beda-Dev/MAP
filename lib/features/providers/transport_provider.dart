@@ -239,7 +239,7 @@ class TransportProvider with ChangeNotifier {
     if (_showRoutes && _routes.isEmpty && _lastLoadedPosition != null) {
       Logger.info('Activation routes + chargement', 'TransportProvider');
       loadStops(_lastLoadedPosition!, forceRefresh: true);
-    } else if (_showRoutes && !_routes.isEmpty) {
+    } else if (_showRoutes && _routes.isNotEmpty) {
       Logger.info('Routes activées (${_routes.length} disponibles)', 'TransportProvider');
     } else {
       Logger.info('Routes désactivées', 'TransportProvider');

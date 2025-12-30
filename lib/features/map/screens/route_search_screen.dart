@@ -387,7 +387,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen>
         Container(
           width: 40,
           height: 40,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: AppColors.primary,
             shape: BoxShape.circle,
           ),
@@ -480,7 +480,7 @@ class _RouteSearchScreenState extends State<RouteSearchScreen>
         Container(
           width: 40,
           height: 40,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: Colors.red,
             shape: BoxShape.circle,
           ),

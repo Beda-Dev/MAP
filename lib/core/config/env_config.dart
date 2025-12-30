@@ -5,20 +5,28 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class EnvConfig {
-  static bool _initialized = false;
+  static final bool _initialized = false;
 
+  // Initialise la configuration depuis le fichier .env
   static Future<void> init() async {
-    if (_initialized) return;
-    
     try {
+      Logger.info('Chargement du fichier .env', 'EnvConfig');
       await dotenv.load(fileName: '.env');
-      _initialized = true;
-      print('🔧 Fichier .env chargé avec succès');
+      Logger.info('Fichier .env chargé avec succès', 'EnvConfig');
     } catch (e) {
-      print('❌ Erreur chargement .env: $e');
-      // Valeurs par défaut si .env non trouvé
-      _initialized = true;
+      Logger.error('Erreur chargement .env', 'EnvConfig', e);
+      Logger.info('Utilisation des valeurs par défaut', 'EnvConfig');
+      // Utiliser des valeurs par défaut si le fichier n'existe pas
     }
+    
+    // Afficher les valeurs chargées (en masquant la clé API)
+    Logger.info('Configuration:', 'EnvConfig');
+    Logger.info('- Mode debug: $debugMode', 'EnvConfig');
+    Logger.info('- URL Overpass: $overpassApiUrl', 'EnvConfig');
+    Logger.info('- Timeout API: ${apiTimeoutSeconds}s', 'EnvConfig');
+    Logger.info('- Rayon recherche: ${searchRadiusMeters}m', 'EnvConfig');
+    Logger.info('- Distance reload: ${minDistanceForReload}m', 'EnvConfig');
+    Logger.info('- Clé API météo: ${hasValidWeatherKey ? "Configurée" : "Non configurée"}', 'EnvConfig');
   }
 
   // API Keys

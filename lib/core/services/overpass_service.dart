@@ -226,7 +226,7 @@ class OverpassService {
           'User-Agent': 'GbakaMap/1.0 Flutter App',
         },
         body: 'data=${Uri.encodeComponent(query)}',
-      ).timeout(Duration(seconds: 15)); // Timeout plus court pour éviter les blocages
+      ).timeout(const Duration(seconds: 15)); // Timeout plus court pour éviter les blocages
 
       Logger.apiResponse(url.toString(), {
         'statusCode': response.statusCode,
@@ -236,7 +236,39 @@ class OverpassService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        Logger.debug('JSON reçu: ${data.toString()}', 'OverpassService');
+        Logger.info('=== DONNÉES JSON BRUTES D\'OVERPASS ===', 'OverpassService');
+        Logger.debug('JSON brut reçu: ${response.body}', 'OverpassService');
+        Logger.info('Structure JSON: ${data.runtimeType}', 'OverpassService');
+        Logger.info('Clés principales: ${data.keys.toList()}', 'OverpassService');
+        if (data['elements'] != null) {
+          final elements = data['elements'] as List;
+          Logger.info('Nombre d\'éléments: ${elements.length}', 'OverpassService');
+          Logger.info('Types d\'éléments: ${elements.map((e) => e['type']).toSet().toList()}', 'OverpassService');
+          
+          Logger.info('=== TOUS LES ÉLÉMENTS DÉTAILLÉS ===', 'OverpassService');
+          for (int i = 0; i < elements.length; i++) {
+            final element = elements[i];
+            Logger.info('Élément $i: ${element['type']} (ID: ${element['id']})', 'OverpassService');
+            Logger.debug('  Données complètes: $element', 'OverpassService');
+            
+            if (element['tags'] != null) {
+              final tags = element['tags'] as Map<String, dynamic>;
+              Logger.debug('  Tags: ${tags.keys.toList()}', 'OverpassService');
+              if (tags['name'] != null) {
+                Logger.debug('  Nom: ${tags['name']}', 'OverpassService');
+              }
+              if (tags['route'] != null) {
+                Logger.debug('  Route: ${tags['route']}', 'OverpassService');
+              }
+              if (tags['highway'] != null) {
+                Logger.debug('  Highway: ${tags['highway']}', 'OverpassService');
+              }
+            }
+            Logger.info('---', 'OverpassService');
+          }
+          Logger.info('=====================================', 'OverpassService');
+        }
+        Logger.info('========================================', 'OverpassService');
         
         final result = _parseOverpassResponseWithRoutes(data);
         final stops = result['stops'] as List<TransportStop>;
@@ -294,26 +326,77 @@ class OverpassService {
     }
   }
 
-  /// Requête Overpass optimisée pour éviter les timeouts
+  /// Requête Overpass optimisée pour Abidjan et transports ivoiriens
   String _buildOptimizedOverpassQuery({
     required double lat,
     required double lon,
     required double radius,
     required TransportType type,
   }) {
-    // Simplifier la requête pour éviter les timeouts
+    // Requête spécifique pour Abidjan avec focus sur les transports locaux
     return '''
-[out:json][timeout:30];
+[out:json][timeout:60][maxsize:1073741824];
+
+// Zone administrative d'Abidjan
+area["name"="Abidjan"]["boundary"="administrative"]->.searchArea;
+
+// Relations correspondant aux gbakas et bus locaux
 (
-  node(around:$radius,$lat,$lon)["highway"="bus_stop"];
-  node(around:$radius,$lat,$lon)["public_transport"="platform"];
-  node(around:$radius,$lat,$lon)["amenity"="taxi"];
-  node(around:$radius,$lat,$lon)["minibus"="yes"];
-  node(around:$radius,$lat,$lon)["gbaka"="yes"];
-  node(around:$radius,$lat,$lon)["woro_woro"="yes"];
-  node(around:$radius,$lat,$lon)["motorcycle_taxi"="yes"];
+  relation
+    ["type"="route"]
+    ["route"="bus"]
+    ["name"~"[Gg]baka"]
+    (area.searchArea);
+
+  relation
+    ["type"="route"]
+    ["route"="bus"]
+    ["bus"="share_taxi"]
+    (area.searchArea);
+
+  relation
+    ["type"="route"]
+    ["route"="bus"]
+    ["minibus"="yes"]
+    (area.searchArea);
+
+  relation
+    ["type"="route"]
+    ["route"="share_taxi"]
+    (area.searchArea);
+)->.gbakaRoutes;
+
+// Contenu détaillé des routes gbaka
+(
+  // Arrêts (noeuds)
+  node(r.gbakaRoutes)
+    ["highway"~"bus_stop|platform"];
+
+  // Segments de trajet
+  way(r.gbakaRoutes);
+
+  // Relations complètes
+  .gbakaRoutes;
+
+  // Arrêts supplémentaires dans la zone de recherche
+  node(around:$radius,$lat,$lon)
+    ["highway"="bus_stop"];
+  node(around:$radius,$lat,$lon)
+    ["public_transport"="platform"];
+  node(around:$radius,$lat,$lon)
+    ["amenity"="taxi"];
+  node(around:$radius,$lat,$lon)
+    ["minibus"="yes"];
+  node(around:$radius,$lat,$lon)
+    ["gbaka"="yes"];
+  node(around:$radius,$lat,$lon)
+    ["woro_woro"="yes"];
+  node(around:$radius,$lat,$lon)
+    ["motorcycle_taxi"="yes"];
 );
-out body;
+
+// Sortie avec toutes les métadonnées
+out meta;
 >;
 out skel qt;
 ''';

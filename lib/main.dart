@@ -142,7 +142,7 @@ class SplashScreenWrapper extends StatefulWidget {
 }
 
 class _SplashScreenWrapperState extends State<SplashScreenWrapper> {
-  bool _isInitializing = true;
+  final bool _isInitializing = true;
   String _statusMessage = 'Initialisation...';
 
   @override

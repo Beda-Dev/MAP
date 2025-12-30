@@ -3,7 +3,6 @@
 // =============================================================================
 
 import 'package:flutter/material.dart';
-import 'package:latlong2/latlong.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/services/overpass_service.dart';

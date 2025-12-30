@@ -3,12 +3,9 @@
 // =============================================================================
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/services/overpass_service.dart';
-import '../providers/transport_provider.dart';
-import '../providers/map_provider.dart';
 
 // =============================================================================
 // TRANSPORT MARKER - Marqueur personnalisé par type de transport

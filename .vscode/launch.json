@@ -1,0 +1,45 @@
+{
+    // Utilisez IntelliSense pour en savoir plus sur les attributs possibles.
+    // Pointez pour afficher la description des attributs existants.
+    // Pour plus d'informations, visitez : https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "gbakamaps",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "gbakamaps (profile mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "gbakamaps (release mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "gbakamaps (debug mode)",
+            "request": "launch",
+            "type": "dart",
+            "deviceId": "10424453"
+        },
+        {
+            "name": "gbakamaps (profile mode) - phone",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile",
+            "deviceId": "10424453"
+        },
+        {
+            "name": "gbakamaps (release mode) - phone",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release",
+            "deviceId": "10424453"
+        }
+    ]
+}

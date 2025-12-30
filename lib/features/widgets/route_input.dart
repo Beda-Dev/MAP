@@ -126,25 +126,25 @@ class RouteSummaryCard extends StatelessWidget {
           // Bouton suggestions
           InkWell(
             onTap: onShowSuggestions,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+            child: const Padding(
+              padding: EdgeInsets.all(16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.directions_bus,
                     color: AppColors.primary,
                   ),
-                  const SizedBox(width: 8),
-                  const Text(
+                  SizedBox(width: 8),
+                  Text(
                     'Voir les suggestions de transport',
                     style: TextStyle(
                       color: AppColors.primary,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  const Icon(
+                  SizedBox(width: 8),
+                  Icon(
                     Icons.arrow_forward_ios,
                     color: AppColors.primary,
                     size: 16,

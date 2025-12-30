@@ -229,11 +229,11 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
         child: SafeArea(
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
+              const Padding(
+                padding: EdgeInsets.all(16.0),
                 child: Row(
                   children: [
-                    const Text(
+                    Text(
                       'GbakaMap',
                       style: TextStyle(
                         color: Colors.white,
@@ -241,8 +241,8 @@ class _MainMapScreenState extends State<MainMapScreen> with TickerProviderStateM
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const Spacer(),
-                    const WeatherWidget(),
+                    Spacer(),
+                    WeatherWidget(),
                   ],
                 ),
               ),
